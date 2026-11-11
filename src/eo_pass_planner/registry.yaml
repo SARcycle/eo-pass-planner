@@ -1,0 +1,224 @@
+# Satellite family registry.
+#
+# Each family maps a regular expression on the CelesTrak OBJECT_NAME to metadata
+# used for filtering (type / operator / country) and to the viewing geometry the
+# sensor can achieve, which decides whether a pass can image the target at all.
+#
+#   type:        sar | optical
+#   look_side:   left | right | both        (direction the sensor can point)
+#   incidence:   [min, max] ellipsoid incidence angle at the target, degrees
+#                (used for SAR)
+#   off_nadir:   [min, max] off-nadir angle at the satellite, degrees
+#                (used for optical; also accepted for SAR)
+#   min_sun_elevation: optical only; passes with the sun lower than this at the
+#                target are dropped (degrees)
+#
+# The angle ranges are approximate, publicly documented envelopes. Commercial
+# tasking limits can be narrower or wider; override them on the command line
+# (--inc-min/--inc-max, --off-nadir-max) or with your own registry (--registry).
+
+families:
+  # ------------------------------------------------------------------ SAR ---
+  ICEYE:
+    pattern: '^ICEYE'
+    type: sar
+    operator: ICEYE
+    country: Finland
+    look_side: both
+    incidence: [10, 45]
+  Capella:
+    pattern: '^CAPELLA'
+    type: sar
+    operator: Capella Space
+    country: USA
+    look_side: both
+    incidence: [5, 50]
+  Umbra:
+    pattern: '^UMBRA'
+    type: sar
+    operator: Umbra
+    country: USA
+    look_side: both
+    incidence: [10, 55]
+  StriX:
+    pattern: '^STRIX'
+    type: sar
+    operator: Synspective
+    country: Japan
+    look_side: both
+    incidence: [15, 45]
+  QPS-SAR:
+    pattern: '^QPS-SAR'
+    type: sar
+    operator: iQPS
+    country: Japan
+    look_side: both
+    incidence: [15, 45]
+  Sentinel-1:
+    pattern: '^SENTINEL-1'
+    type: sar
+    operator: ESA
+    country: EU
+    look_side: right
+    incidence: [19, 47]
+  TerraSAR-X/TanDEM-X/PAZ:
+    pattern: '^(TERRASAR-X|TANDEM-X|PAZ)$'
+    type: sar
+    operator: DLR / Airbus / Hisdesat
+    country: Germany, Spain
+    look_side: right
+    incidence: [15, 60]
+  COSMO-SkyMed:
+    pattern: '^(COSMO-SKYMED|CSG)'
+    type: sar
+    operator: ASI
+    country: Italy
+    look_side: both
+    incidence: [15, 60]
+  RADARSAT-2:
+    pattern: '^RADARSAT-2'
+    type: sar
+    operator: MDA
+    country: Canada
+    look_side: both
+    incidence: [10, 60]
+  RCM:
+    pattern: '^RCM-'
+    type: sar
+    operator: CSA
+    country: Canada
+    look_side: right
+    incidence: [10, 60]
+  ALOS:
+    pattern: '^ALOS-[24]'
+    type: sar
+    operator: JAXA
+    country: Japan
+    look_side: both
+    incidence: [8, 70]
+  SAOCOM:
+    pattern: '^SAOCOM'
+    type: sar
+    operator: CONAE
+    country: Argentina
+    look_side: both
+    incidence: [20, 50]
+  NISAR:
+    pattern: '^NISAR$'
+    type: sar
+    operator: NASA / ISRO
+    country: USA, India
+    look_side: left
+    incidence: [33, 47]
+  NovaSAR:
+    pattern: '^NOVASAR'
+    type: sar
+    operator: SSTL
+    country: UK
+    look_side: right
+    incidence: [15, 70]
+  TeLEOS-2:
+    pattern: '^TELEOS-2'
+    type: sar
+    operator: ST Engineering
+    country: Singapore
+    look_side: both
+    incidence: [15, 45]
+
+  # -------------------------------------------------------------- optical ---
+  Sentinel-2:
+    pattern: '^SENTINEL-2'
+    type: optical
+    operator: ESA
+    country: EU
+    look_side: both
+    off_nadir: [0, 10.5]
+    min_sun_elevation: 0
+  Landsat:
+    pattern: '^LANDSAT [89]'
+    type: optical
+    operator: USGS / NASA
+    country: USA
+    look_side: both
+    off_nadir: [0, 7.5]
+    min_sun_elevation: 0
+  Pleiades:
+    pattern: '^PLEIADES 1'
+    type: optical
+    operator: Airbus
+    country: France
+    look_side: both
+    off_nadir: [0, 30]
+    min_sun_elevation: 10
+  Pleiades-Neo:
+    pattern: '^PLEIADES NEO'
+    type: optical
+    operator: Airbus
+    country: France
+    look_side: both
+    off_nadir: [0, 30]
+    min_sun_elevation: 10
+  SPOT:
+    pattern: '^SPOT [67]'
+    type: optical
+    operator: Airbus
+    country: France
+    look_side: both
+    off_nadir: [0, 30]
+    min_sun_elevation: 10
+  CO3D:
+    pattern: '^CO3D'
+    type: optical
+    operator: CNES / Airbus
+    country: France
+    look_side: both
+    off_nadir: [0, 30]
+    min_sun_elevation: 10
+  WorldView:
+    pattern: '^WORLDVIEW'
+    type: optical
+    operator: Maxar
+    country: USA
+    look_side: both
+    off_nadir: [0, 45]
+    min_sun_elevation: 10
+  WorldView-Legion:
+    pattern: '^LEGION'
+    type: optical
+    operator: Maxar
+    country: USA
+    look_side: both
+    off_nadir: [0, 45]
+    min_sun_elevation: 10
+  SkySat:
+    pattern: '^SKYSAT'
+    type: optical
+    operator: Planet
+    country: USA
+    look_side: both
+    off_nadir: [0, 30]
+    min_sun_elevation: 10
+  PlanetScope:
+    pattern: '^FLOCK'
+    type: optical
+    operator: Planet
+    country: USA
+    look_side: both
+    off_nadir: [0, 3]
+    min_sun_elevation: 10
+  SuperView:
+    pattern: '^SUPERVIEW'
+    type: optical
+    operator: Siwei / CGSTL
+    country: China
+    look_side: both
+    off_nadir: [0, 45]
+    min_sun_elevation: 10
+  KOMPSAT:
+    pattern: '^KOMPSAT-(3A|7)'
+    type: optical
+    operator: KARI
+    country: South Korea
+    look_side: both
+    off_nadir: [0, 30]
+    min_sun_elevation: 10
