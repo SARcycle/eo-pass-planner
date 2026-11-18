@@ -26,6 +26,9 @@ examples:
   eo-pass-planner --family Pleiades --lat 46.948 --lon 7.447 --time 2026-11-20T10:30Z --window 3h \
       --off-nadir 12 --onad-tol 3
 
+  # Optical satellites reaching 1 m GSD or better
+  eo-pass-planner --type optical --lat 46.948 --lon 7.447 --start now --end +7d --max-gsd 1
+
   # All SAR satellites from Japan over the next 24 h
   eo-pass-planner --type sar --country japan --lat 35.68 --lon 139.69 --start now --end +24h
 
@@ -51,6 +54,13 @@ def parse_time(s: str, base: datetime | None = None) -> datetime:
         return (base or now) + parse_duration(s[1:])
     t = datetime.fromisoformat(s.replace("Z", "+00:00").replace("z", "+00:00"))
     return t if t.tzinfo else t.replace(tzinfo=timezone.utc)
+
+
+def _fmt_gsd(value: float | None) -> str:
+    """Format a GSD table cell."""
+    if value is None:
+        return f"{'-':>5}"
+    return f"{value:5.2f}" if value < 10 else f"{value:5.1f}"
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -90,6 +100,8 @@ def build_parser() -> argparse.ArgumentParser:
                    help="drop passes whose off-nadir angle differs more than this")
     g.add_argument("--off-nadir-min", type=float)
     g.add_argument("--off-nadir-max", type=float)
+    g.add_argument("--max-gsd", type=float,
+                   help="optical: only passes whose GSD at the pass geometry is <= this (m)")
     g.add_argument("--look-side", choices=["left", "right", "both"])
     g.add_argument("--min-sun", type=float, help="minimum sun elevation at target (deg)")
     g.add_argument("--all", action="store_true", help="also show passes outside the sensor envelope")
@@ -137,12 +149,23 @@ def main(argv: list[str] | None = None) -> int:
         print("No satellites match the selection.", file=sys.stderr)
         return 1
 
+    if args.max_gsd is not None and not args.all:
+        # Skip satellites that cannot reach the GSD even at nadir.
+        cands = [c for c in cands
+                 if (g0 := c.family.nadir_gsd(c.name)) is not None and g0 <= args.max_gsd]
+        if not cands:
+            print(f"No selected satellite has a known nadir GSD <= {args.max_gsd:g} m.",
+                  file=sys.stderr)
+            return 1
+
     if args.list:
         print(f"{len(cands)} satellites (source: {source})")
-        print(f"{'NORAD':>6}  {'name':<32} {'family':<24} {'type':<8} {'country':<16} {'incl':>6}  epoch")
+        print(f"{'NORAD':>6}  {'name':<32} {'family':<24} {'type':<8} {'country':<16} {'incl':>6} "
+              f"{'gsd0':>5}  epoch")
         for c in sorted(cands, key=lambda c: c.name):
             print(f"{c.norad:>6}  {c.name:<32} {c.family.name:<24} {c.family.type:<8} "
-                  f"{c.family.country:<16} {c.satellite.model.inclo * 57.29578:6.2f}  "
+                  f"{c.family.country:<16} {c.satellite.model.inclo * 57.29578:6.2f} "
+                  f"{_fmt_gsd(c.family.nadir_gsd(c.name))}  "
                   f"{c.satellite.epoch:%Y-%m-%d %H:%M}")
         return 0
 
@@ -178,7 +201,8 @@ def main(argv: list[str] | None = None) -> int:
     passes = find_passes(cands, args.lat, args.lon, start=start, end=end, ref_time=ref,
                          height_m=args.height, step_s=args.step, incidence_range=inc_rng,
                          off_nadir_range=onr, min_sun_elevation=args.min_sun,
-                         look_side=args.look_side, include_infeasible=args.all)
+                         look_side=args.look_side, max_gsd=args.max_gsd,
+                         include_infeasible=args.all)
 
     if args.incidence is not None:
         for p in passes:
@@ -213,7 +237,7 @@ def main(argv: list[str] | None = None) -> int:
         print("No passes found. Widen --window, relax constraints, or use --all.")
         return 0
     hdr = (f"{'satellite':<24} {'time (UTC)':<19} {'dt[min]':>8} {'pass':<4} {'look':<5} "
-           f"{'hdg_trk':>7} {'hdg_scn':>7} {'look_az':>7} {'inc':>5} {'offnad':>6} "
+           f"{'hdg_trk':>7} {'hdg_scn':>7} {'look_az':>7} {'inc':>5} {'offnad':>6} {'gsd':>5} "
            f"{'grd_km':>6} {'sun':>5} {'LST':>5} {'TLEage':>6}")
     if args.incidence is not None:
         hdr += f" {'dInc':>5}"
@@ -225,7 +249,7 @@ def main(argv: list[str] | None = None) -> int:
     for p in passes:
         line = (f"{p.satellite[:24]:<24} {p.time_utc:%Y-%m-%d %H:%M:%S} {p.offset_min:8.1f} "
                 f"{p.direction:<4} {p.look_side:<5} {p.heading_track:7.2f} {p.heading_scene:7.2f} "
-                f"{p.look_azimuth:7.2f} {p.incidence:5.1f} {p.off_nadir:6.1f} "
+                f"{p.look_azimuth:7.2f} {p.incidence:5.1f} {p.off_nadir:6.1f} {_fmt_gsd(p.gsd)} "
                 f"{p.ground_range_km:6.0f} {p.sun_elevation:5.1f} {p.local_solar_time:>5} "
                 f"{p.tle_age_days:5.1f}d")
         if args.incidence is not None:

@@ -25,7 +25,23 @@ class Family:
     incidence: tuple[float, float] | None = None
     off_nadir: tuple[float, float] | None = None
     min_sun_elevation: float | None = None
+    gsd: tuple[tuple[re.Pattern, float], ...] = ()     # (name pattern, nadir GSD in m)
     extra: dict = field(default_factory=dict, compare=False)
+
+    def nadir_gsd(self, sat_name: str) -> float | None:
+        """Nominal nadir GSD (m) for this satellite, or None if unknown."""
+        for rx, value in self.gsd:
+            if rx.search(sat_name):
+                return value
+        return None
+
+
+def _parse_gsd(value) -> tuple[tuple[re.Pattern, float], ...]:
+    if value is None:
+        return ()
+    if isinstance(value, dict):
+        return tuple((re.compile(k, re.IGNORECASE), float(v)) for k, v in value.items())
+    return ((re.compile(""), float(value)),)
 
 
 UNKNOWN = Family(name="(unregistered)", pattern=re.compile(r"$^"))
@@ -41,7 +57,7 @@ def load_registry(path: str | Path | None = None) -> list[Family]:
     families = []
     for name, f in (data.get("families") or {}).items():
         known = {"pattern", "type", "operator", "country", "look_side",
-                 "incidence", "off_nadir", "min_sun_elevation"}
+                 "incidence", "off_nadir", "min_sun_elevation", "gsd"}
         families.append(
             Family(
                 name=name,
@@ -53,6 +69,7 @@ def load_registry(path: str | Path | None = None) -> list[Family]:
                 incidence=tuple(f["incidence"]) if f.get("incidence") else None,
                 off_nadir=tuple(f["off_nadir"]) if f.get("off_nadir") else None,
                 min_sun_elevation=f.get("min_sun_elevation"),
+                gsd=_parse_gsd(f.get("gsd")),
                 extra={k: v for k, v in f.items() if k not in known},
             )
         )

@@ -67,6 +67,9 @@ uv run eo-pass-planner --family Pleiades --lat 46.948 --lon 7.447 --time 2026-11
 # Optical over the next 2 days, off-nadir 5-20 deg, sun at least 15 deg up
 uv run eo-pass-planner --type optical --lat 46.948 --lon 7.447 --start now --end +2d --off-nadir-min 5 --off-nadir-max 20 --min-sun 15
 
+# Only optical satellites that deliver 1 m GSD or better at this geometry
+uv run eo-pass-planner --type optical --lat 46.948 --lon 7.447 --start now --end +7d --max-gsd 1
+
 # All Japanese SAR satellites over the next 24 h
 uv run eo-pass-planner --type sar --country japan --lat 46.948 --lon 7.447 --start now --end +24h
 
@@ -111,6 +114,7 @@ Selection criteria (`--name`, `--family`, `--type`, `--country`, `--operator`,
 | `look_az` | azimuth of the line of sight satellite → target, at the target (≈ `hdg_scn` ± 90°) |
 | `inc` | incidence angle at the target relative to the WGS84 ellipsoid normal |
 | `offnad` | off-nadir (look) angle at the satellite |
+| `gsd` | optical: expected panchromatic GSD (m) at this pass geometry, see [Resolution](#resolution-gsd) (`-` if unknown) |
 | `grd_km` | ground distance sub-satellite point → target |
 | `sun` | sun elevation at the target (deg) |
 | `LST` | local mean solar time at the target |
@@ -120,6 +124,28 @@ Selection criteria (`--name`, `--family`, `--type`, `--country`, `--operator`,
 
 The CSV/JSON output also contains slant range, altitude, sub-satellite point,
 inclination and the element epoch.
+
+## Resolution (GSD)
+
+For optical satellites the registry holds a nominal **panchromatic GSD at
+nadir** (native sensor values from public specifications, not resampled
+product pixel sizes). The tool scales it to the actual pass geometry. The
+pixel's angular size is fixed, so its footprint grows with slant range `R`
+relative to the altitude `h`. Across track, the ground is also tilted by the
+incidence angle against the line of sight:
+
+    along = gsd0 * R / h        cross = along / cos(incidence)        gsd = sqrt(along * cross)
+
+`gsd` is the geometric mean, as vendors usually quote off-nadir GSD. For example,
+WorldView-3 at 0.31 m at nadir gives 0.34 m at 20° off-nadir, matching Maxar's figure.
+CSV/JSON also contain `gsd_nadir`, `gsd_along` and `gsd_cross`.
+
+`--max-gsd 1` keeps only passes with `gsd <= 1 m`. Satellites that cannot
+reach it even at nadir, or whose GSD is unknown, are skipped (`--all` shows
+them with the reason). `--list` shows the nadir GSD as `gsd0`. Check the
+values for the missions you rely on: they are approximate and some are
+missing (SuperView Neo-3). SAR resolution depends on the imaging mode rather
+than mainly on the angle, so SAR satellites have no GSD here.
 
 ## Accuracy
 

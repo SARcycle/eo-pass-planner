@@ -44,6 +44,10 @@ class Pass:
     look_azimuth: float           # azimuth of the line of sight at the target (sat -> target), deg
     incidence: float              # ellipsoid incidence angle at the target, deg
     off_nadir: float              # off-nadir (look) angle at the satellite, deg
+    gsd_nadir: float | None       # nadir GSD from the registry (m)
+    gsd: float | None             # GSD at this geometry (m)
+    gsd_along: float | None       # along-track GSD (m)
+    gsd_cross: float | None       # across-track GSD (m)
     ground_range_km: float        # sub-satellite point -> target
     slant_range_km: float
     altitude_km: float
@@ -101,6 +105,17 @@ def sun_elevation(t_utc: datetime, lat: float, lon: float) -> float:
     return math.degrees(math.asin(max(-1.0, min(1.0, s))))
 
 
+def off_nadir_gsd(gsd_nadir: float, slant_km: float, altitude_km: float,
+                  incidence_deg: float) -> tuple[float, float]:
+    """Along- and across-track GSD (m) for a sensor with ``gsd_nadir`` viewed off-nadir.
+
+    The pixel footprint grows with slant range; across track it also grows
+    with the incidence angle.
+    """
+    along = gsd_nadir * slant_km / altitude_km
+    return along, along / math.cos(math.radians(incidence_deg))
+
+
 def _refine(sat, target, jd: float, fr_a: float, fr_b: float, iters: int = 30) -> float:
     """Bisection on f(t) = (T - r).v between two times."""
     for _ in range(iters):
@@ -120,10 +135,12 @@ def find_passes(candidates: list[Candidate], lat: float, lon: float, *,
                 off_nadir_range: tuple[float, float] | None = None,
                 min_sun_elevation: float | None = None,
                 look_side: str | None = None,
+                max_gsd: float | None = None,
                 include_infeasible: bool = False) -> list[Pass]:
     """Predict every pass of ``candidates`` over the target between start and end.
 
     Range/sun/look-side arguments override the per-family registry values.
+    ``max_gsd`` rejects passes with a coarser or unknown GSD.
     Passes that violate the limits are dropped unless ``include_infeasible``.
     """
     start = start.astimezone(timezone.utc)
@@ -167,6 +184,12 @@ def find_passes(candidates: list[Candidate], lat: float, lon: float, *,
             ground = 6371.0088 * math.acos(max(-1.0, min(1.0,
                      math.sin(p1) * math.sin(p2) + math.cos(p1) * math.cos(p2) * math.cos(dl))))
 
+            g0 = fam.nadir_gsd(cand.name)
+            gsd = gsd_along = gsd_cross = None
+            if g0 is not None:
+                gsd_along, gsd_cross = off_nadir_gsd(g0, slant, sub_h, incidence)
+                gsd = math.sqrt(gsd_along * gsd_cross)
+
             when = datetime_from_jd(jd0, fr)
             epoch = sat.epoch.replace(microsecond=0)
             sun = sun_elevation(when, lat, lon)
@@ -180,6 +203,7 @@ def find_passes(candidates: list[Candidate], lat: float, lon: float, *,
                 heading_scene=_azimuth(vs, e_t, n_t),
                 look_azimuth=_azimuth(los_sat_to_tgt, e_t, n_t),
                 incidence=incidence, off_nadir=off_nadir,
+                gsd_nadir=g0, gsd=gsd, gsd_along=gsd_along, gsd_cross=gsd_cross,
                 ground_range_km=ground, slant_range_km=slant,
                 altitude_km=sub_h, sub_lat=sub_lat, sub_lon=sub_lon,
                 sun_elevation=sun, local_solar_time=f"{int(lst_h):02d}:{int(lst_h % 1 * 60):02d}",
@@ -205,6 +229,11 @@ def find_passes(candidates: list[Candidate], lat: float, lon: float, *,
             sun_min = min_sun_elevation if min_sun_elevation is not None else fam.min_sun_elevation
             if sun_min is not None and sun < sun_min:
                 reasons.append(f"sun {sun:.1f} below {sun_min:g}")
+            if max_gsd is not None:
+                if gsd is None:
+                    reasons.append("GSD unknown")
+                elif gsd > max_gsd:
+                    reasons.append(f"GSD {gsd:.2f} m > {max_gsd:g} m")
             p.feasible = not reasons
             p.reason = "; ".join(reasons)
             if p.feasible or include_infeasible:

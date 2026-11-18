@@ -52,3 +52,13 @@ def test_table_shows_off_nadir_delta(capsys):
 def test_tolerance_needs_target(capsys, args):
     assert main([*WHERE, *args]) == 2
     assert "needs" in capsys.readouterr().err
+
+
+def test_max_gsd_drops_satellites_without_gsd(capsys):
+    assert main([*WHERE, "--max-gsd", "1"]) == 1
+    assert "No selected satellite has a known nadir GSD <= 1 m" in capsys.readouterr().err
+
+
+def test_list_shows_gsd_column(capsys):
+    assert main(["--name", "ICEYE", "--list"]) == 0
+    assert "gsd0" in capsys.readouterr().out

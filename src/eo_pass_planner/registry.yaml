@@ -12,10 +12,13 @@
 #                (used for optical; also accepted for SAR)
 #   min_sun_elevation: optical only; passes with the sun lower than this at the
 #                target are dropped (degrees)
+#   gsd:         optical only; nominal panchromatic GSD at nadir (m), either
+#                one value or {name regex: value}. Approximate public figures.
 #
 # The angle ranges are approximate, publicly documented envelopes. Commercial
 # tasking limits can be narrower or wider; override them on the command line
-# (--inc-min/--inc-max, --off-nadir-max) or with your own registry (--registry).
+# (--inc-min/--inc-max, --off-nadir-min/--off-nadir-max) or with your own
+# registry (--registry).
 
 families:
   # ------------------------------------------------------------------ SAR ---
@@ -125,6 +128,13 @@ families:
     look_side: both
     incidence: [15, 45]
 
+  SuperView-Neo-2:                # SAR, unlike the other SuperViews
+    pattern: '^SUPERVIEW NEO-2'
+    type: sar
+    operator: Siwei / CGSTL
+    country: China
+    look_side: both
+
   # -------------------------------------------------------------- optical ---
   Sentinel-2:
     pattern: '^SENTINEL-2'
@@ -134,6 +144,7 @@ families:
     look_side: both
     off_nadir: [0, 10.5]
     min_sun_elevation: 0
+    gsd: 10
   Landsat:
     pattern: '^LANDSAT [89]'
     type: optical
@@ -142,6 +153,7 @@ families:
     look_side: both
     off_nadir: [0, 7.5]
     min_sun_elevation: 0
+    gsd: 15
   Pleiades:
     pattern: '^PLEIADES 1'
     type: optical
@@ -150,6 +162,7 @@ families:
     look_side: both
     off_nadir: [0, 30]
     min_sun_elevation: 10
+    gsd: 0.70
   Pleiades-Neo:
     pattern: '^PLEIADES NEO'
     type: optical
@@ -158,6 +171,7 @@ families:
     look_side: both
     off_nadir: [0, 30]
     min_sun_elevation: 10
+    gsd: 0.30
   SPOT:
     pattern: '^SPOT [67]'
     type: optical
@@ -166,6 +180,7 @@ families:
     look_side: both
     off_nadir: [0, 30]
     min_sun_elevation: 10
+    gsd: 1.5
   CO3D:
     pattern: '^CO3D'
     type: optical
@@ -174,6 +189,7 @@ families:
     look_side: both
     off_nadir: [0, 30]
     min_sun_elevation: 10
+    gsd: 0.50
   WorldView:
     pattern: '^WORLDVIEW'
     type: optical
@@ -182,6 +198,10 @@ families:
     look_side: both
     off_nadir: [0, 45]
     min_sun_elevation: 10
+    gsd:
+      'WORLDVIEW-1': 0.50
+      'WORLDVIEW-2': 0.46
+      'WORLDVIEW-3': 0.31
   WorldView-Legion:
     pattern: '^LEGION'
     type: optical
@@ -190,6 +210,7 @@ families:
     look_side: both
     off_nadir: [0, 45]
     min_sun_elevation: 10
+    gsd: 0.29
   SkySat:
     pattern: '^SKYSAT'
     type: optical
@@ -198,6 +219,9 @@ families:
     look_side: both
     off_nadir: [0, 30]
     min_sun_elevation: 10
+    gsd:
+      'SKYSAT-C': 0.57
+      'SKYSAT-[AB]': 0.9
   PlanetScope:
     pattern: '^FLOCK'
     type: optical
@@ -206,6 +230,7 @@ families:
     look_side: both
     off_nadir: [0, 3]
     min_sun_elevation: 10
+    gsd: 3.7
   SuperView:
     pattern: '^SUPERVIEW'
     type: optical
@@ -214,6 +239,9 @@ families:
     look_side: both
     off_nadir: [0, 45]
     min_sun_elevation: 10
+    gsd:                       # Neo-3 unknown
+      'SUPERVIEW-1': 0.50
+      'SUPERVIEW NEO-1': 0.30
   KOMPSAT:
     pattern: '^KOMPSAT-(3A|7)'
     type: optical
@@ -222,3 +250,6 @@ families:
     look_side: both
     off_nadir: [0, 30]
     min_sun_elevation: 10
+    gsd:
+      'KOMPSAT-3A': 0.55
+      'KOMPSAT-7': 0.30
