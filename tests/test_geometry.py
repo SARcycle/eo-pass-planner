@@ -1,15 +1,21 @@
 """Offline tests using a frozen CelesTrak snapshot (tests/fixture_gp.json, epoch ~2026-11-11)."""
 
 import json
-from datetime import datetime, timezone
+import os
+import subprocess
+import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 from eo_pass_planner import find_passes, load_registry, select, sun_elevation
+from eo_pass_planner.orbit import geodetic_to_itrs, itrs_to_geodetic, jd_from_datetime
 
 BERN = (46.948, 7.447)
-RECORDS = json.loads((Path(__file__).parent / "fixture_gp.json").read_text())
+FIXTURE = Path(__file__).parent / "fixture_gp.json"
+RECORDS = json.loads(FIXTURE.read_text())
 FAMILIES = load_registry()
 
 
@@ -42,17 +48,60 @@ def test_sentinel1_headings_over_bern():
 
 
 def test_zero_doppler_is_perpendicular():
-    from skyfield.api import load, wgs84
-    from skyfield.framelib import itrs
-
     p = _passes(name="ICEYE-X40")[0]
     sat = select(RECORDS, FAMILIES, name="ICEYE-X40")[0].satellite
-    t = load.timescale().from_datetime(p.time_utc)
-    r, v = sat.at(t).frame_xyz_and_velocity(itrs)
-    los = wgs84.latlon(*BERN).itrs_xyz.km - r.km
-    vv = v.km_per_s
-    cos = (los @ vv) / ((los @ los) ** 0.5 * (vv @ vv) ** 0.5)
+    r, v = sat.state(*jd_from_datetime(p.time_utc))
+    los = geodetic_to_itrs(*BERN) - r
+    cos = (los @ v) / ((los @ los) ** 0.5 * (v @ v) ** 0.5)
     assert abs(cos) < 1e-5
+
+
+def test_altitude_is_orbit_height():
+    for p in _passes(name="ICEYE-X40"):
+        assert 450 < p.altitude_km < 700
+
+
+def test_matches_skyfield():
+    """The frame and geodetic maths match Skyfield."""
+    sf = pytest.importorskip("skyfield.api")
+    from skyfield.framelib import itrs
+
+    rec = next(r for r in RECORDS if r["OBJECT_NAME"] == "SENTINEL-1A")
+    ours = select([rec], FAMILIES)[0].satellite
+    ts = sf.load.timescale()
+    theirs = sf.EarthSatellite.from_omm(ts, rec)
+    for hour in range(0, 72, 7):
+        when = datetime(2026, 11, 12, tzinfo=timezone.utc) + timedelta(hours=hour, seconds=13.7)
+        r, v = ours.state(*jd_from_datetime(when))
+        pos, vel = theirs.at(ts.from_datetime(when)).frame_xyz_and_velocity(itrs)
+        assert np.linalg.norm(r - pos.km) < 0.1                 # km
+        assert np.linalg.norm(v - vel.km_per_s) < 1e-4          # km/s
+        lat, lon, _ = itrs_to_geodetic(r)
+        sub = sf.wgs84.subpoint_of(theirs.at(ts.from_datetime(when)))
+        assert lat == pytest.approx(sub.latitude.degrees, abs=1e-3)
+        assert lon == pytest.approx(sub.longitude.degrees, abs=1e-3)
+
+
+def test_vendored_sgp4_matches_installed():
+    """The bundled sgp4 gives the same results as the installed one."""
+    code = (
+        "import json, sys; from datetime import datetime, timezone;"
+        "from eo_pass_planner import select, find_passes, load_registry;"
+        "recs = json.load(open(sys.argv[1]));"
+        "c = select(recs, load_registry(), name='ICEYE-X40');"
+        "ps = find_passes(c, 46.948, 7.447, start=datetime(2026, 11, 12, tzinfo=timezone.utc),"
+        " end=datetime(2026, 11, 13, tzinfo=timezone.utc));"
+        "import sgp4; print(json.dumps({'path': sgp4.__file__, 'inc': [p.incidence for p in ps]}))"
+    )
+    env = dict(os.environ, EO_PASS_PLANNER_VENDORED_SGP4="1")
+    out = subprocess.run([sys.executable, "-c", code, str(FIXTURE)], env=env,
+                         capture_output=True, text=True, check=True).stdout
+    res = json.loads(out)
+    assert "_vendor" in res["path"]
+    ref = [p.incidence for p in find_passes(select(RECORDS, FAMILIES, name="ICEYE-X40"), *BERN,
+           start=datetime(2026, 11, 12, tzinfo=timezone.utc),
+           end=datetime(2026, 11, 13, tzinfo=timezone.utc))]
+    assert res["inc"] == pytest.approx(ref, abs=1e-9)
 
 
 def test_mid_inclination_iceye_heading_differs():

@@ -24,12 +24,9 @@ from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
 
 import numpy as np
-from skyfield.api import load, wgs84
-from skyfield.framelib import itrs
 
 from .catalog import Candidate
-
-_TS = load.timescale()
+from .orbit import datetime_from_jd, geodetic_to_itrs, itrs_to_geodetic, jd_from_datetime
 
 
 @dataclass
@@ -103,21 +100,16 @@ def sun_elevation(t_utc: datetime, lat: float, lon: float) -> float:
     return math.degrees(math.asin(max(-1.0, min(1.0, s))))
 
 
-def _state(sat, t):
-    pos, vel = sat.at(t).frame_xyz_and_velocity(itrs)
-    return pos.km, vel.km_per_s
-
-
-def _refine(sat, target, tt_a: float, tt_b: float, iters: int = 30) -> float:
-    """Bisection on f(t) = (T - r).v between two TT Julian dates (f(a) > 0 >= f(b))."""
+def _refine(sat, target, jd: float, fr_a: float, fr_b: float, iters: int = 30) -> float:
+    """Bisection on f(t) = (T - r).v between two times."""
     for _ in range(iters):
-        mid = 0.5 * (tt_a + tt_b)
-        r, v = _state(sat, _TS.tt_jd(mid))
+        mid = 0.5 * (fr_a + fr_b)
+        r, v = sat.state(jd, mid)
         if (target - r) @ v > 0:
-            tt_a = mid
+            fr_a = mid
         else:
-            tt_b = mid
-    return 0.5 * (tt_a + tt_b)
+            fr_b = mid
+    return 0.5 * (fr_a + fr_b)
 
 
 def find_passes(candidates: list[Candidate], lat: float, lon: float, *,
@@ -137,18 +129,17 @@ def find_passes(candidates: list[Candidate], lat: float, lon: float, *,
     end = end.astimezone(timezone.utc)
     ref_time = (ref_time or start + (end - start) / 2).astimezone(timezone.utc)
 
-    target = wgs84.latlon(lat, lon, elevation_m=height_m).itrs_xyz.km
+    target = geodetic_to_itrs(lat, lon, height_m / 1000.0)
     e_t, n_t, u_t = _enu(lat, lon)
 
-    t0 = _TS.from_datetime(start)
+    jd0, fr0 = jd_from_datetime(start)
     n_steps = int(math.ceil((end - start).total_seconds() / step_s)) + 1
-    tt_grid = t0.tt + np.arange(n_steps) * step_s / 86400.0
-    t_grid = _TS.tt_jd(tt_grid)
+    fr_grid = fr0 + np.arange(n_steps) * step_s / 86400.0
 
     passes: list[Pass] = []
     for cand in candidates:
         sat, fam = cand.satellite, cand.family
-        r, v = _state(sat, t_grid)                      # (3, N)
+        r, v = sat.state(jd0, fr_grid)                  # (3, N)
         f = np.einsum("ij,ij->j", target[:, None] - r, v)
         idx = np.nonzero((f[:-1] > 0) & (f[1:] <= 0))[0]
         for i in idx:
@@ -156,11 +147,9 @@ def find_passes(candidates: list[Candidate], lat: float, lon: float, *,
             los = r[:, i] - target
             if los @ u_t <= 0:
                 continue
-            tt = _refine(sat, target, tt_grid[i], tt_grid[i + 1])
-            t = _TS.tt_jd(tt)
-            rs, vs = _state(sat, t)
-            sub = wgs84.subpoint_of(sat.at(t))
-            sub_lat, sub_lon = sub.latitude.degrees, sub.longitude.degrees
+            fr = _refine(sat, target, jd0, fr_grid[i], fr_grid[i + 1])
+            rs, vs = sat.state(jd0, fr)
+            sub_lat, sub_lon, sub_h = itrs_to_geodetic(rs)
             e_s, n_s, u_s = _enu(sub_lat, sub_lon)
 
             los_sat_to_tgt = target - rs
@@ -177,8 +166,8 @@ def find_passes(candidates: list[Candidate], lat: float, lon: float, *,
             ground = 6371.0088 * math.acos(max(-1.0, min(1.0,
                      math.sin(p1) * math.sin(p2) + math.cos(p1) * math.cos(p2) * math.cos(dl))))
 
-            when = t.utc_datetime()
-            epoch = sat.epoch.utc_datetime().replace(microsecond=0)
+            when = datetime_from_jd(jd0, fr)
+            epoch = sat.epoch.replace(microsecond=0)
             sun = sun_elevation(when, lat, lon)
             lst_h = (when.hour + when.minute / 60 + when.second / 3600 + lon / 15.0) % 24
 
@@ -191,7 +180,7 @@ def find_passes(candidates: list[Candidate], lat: float, lon: float, *,
                 look_azimuth=_azimuth(los_sat_to_tgt, e_t, n_t),
                 incidence=incidence, off_nadir=off_nadir,
                 ground_range_km=ground, slant_range_km=slant,
-                altitude_km=float(sub.elevation.km), sub_lat=sub_lat, sub_lon=sub_lon,
+                altitude_km=sub_h, sub_lat=sub_lat, sub_lon=sub_lon,
                 sun_elevation=sun, local_solar_time=f"{int(lst_h):02d}:{int(lst_h % 1 * 60):02d}",
                 inclination=math.degrees(sat.model.inclo), tle_epoch=epoch,
                 tle_age_days=(when - epoch).total_seconds() / 86400.0,

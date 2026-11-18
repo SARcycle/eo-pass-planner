@@ -11,8 +11,7 @@ import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
-from skyfield.api import EarthSatellite, load
-
+from .orbit import Satellite, read_tle_file
 from .registry import Family, classify
 
 CELESTRAK_URL = "https://celestrak.org/NORAD/elements/gp.php?GROUP={group}&FORMAT=json"
@@ -52,14 +51,13 @@ def fetch_gp(group: str = "active", max_age_hours: float = 6.0,
             if not path.exists():
                 raise RuntimeError(f"Could not download CelesTrak data: {exc}") from exc
             print(f"warning: download failed ({exc}); using cached {path}", file=sys.stderr)
-    return json.loads(path.read_text()), path
+    return json.loads(path.read_text(encoding="utf-8")), path
 
 
 def records_from_tle_file(path: str | Path) -> list[dict]:
     """Read a 2LE/3LE text file (e.g. from Space-Track) into minimal records."""
-    ts = load.timescale()
     out = []
-    for sat in load.tle_file(str(path), ts=ts, reload=False):
+    for sat in read_tle_file(path):
         out.append({"_satellite": sat, "OBJECT_NAME": sat.name or str(sat.model.satnum),
                     "NORAD_CAT_ID": sat.model.satnum})
     return out
@@ -67,7 +65,7 @@ def records_from_tle_file(path: str | Path) -> list[dict]:
 
 @dataclass
 class Candidate:
-    satellite: EarthSatellite
+    satellite: Satellite
     name: str
     norad: int
     family: Family
@@ -83,7 +81,6 @@ def select(records: list[dict], families: list[Family], *,
     ``name``, ``family``, ``country`` and ``operator`` are case-insensitive
     regular expressions (a plain word works as a substring match).
     """
-    ts = load.timescale()
     rx = lambda s: re.compile(s, re.IGNORECASE) if s else None  # noqa: E731
     name_rx, fam_rx, country_rx, op_rx = rx(name), rx(family), rx(country), rx(operator)
     # Filters on registry metadata only make sense for registered satellites.
@@ -108,6 +105,6 @@ def select(records: list[dict], families: list[Family], *,
             continue
         if op_rx and not op_rx.search(fam.operator):
             continue
-        sat = rec.get("_satellite") or EarthSatellite.from_omm(ts, rec)
+        sat = rec.get("_satellite") or Satellite.from_omm(rec)
         out.append(Candidate(sat, obj.strip(), int(rec["NORAD_CAT_ID"]), fam))
     return out

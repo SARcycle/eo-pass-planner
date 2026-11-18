@@ -116,7 +116,7 @@ def main(argv: list[str] | None = None) -> int:
         for c in sorted(cands, key=lambda c: c.name):
             print(f"{c.norad:>6}  {c.name:<32} {c.family.name:<24} {c.family.type:<8} "
                   f"{c.family.country:<16} {c.satellite.model.inclo * 57.29578:6.2f}  "
-                  f"{c.satellite.epoch.utc_strftime('%Y-%m-%d %H:%M')}")
+                  f"{c.satellite.epoch:%Y-%m-%d %H:%M}")
         return 0
 
     if args.lat is None or args.lon is None:
@@ -154,7 +154,7 @@ def main(argv: list[str] | None = None) -> int:
         passes.sort(key=lambda p: (not p.feasible, abs(p.offset_min)))
 
     if args.csv:
-        with open(args.csv, "w", newline="") as fh:
+        with open(args.csv, "w", newline="", encoding="utf-8") as fh:
             rows = [p.as_dict() for p in passes]
             w = csv.DictWriter(fh, fieldnames=list(rows[0]) if rows else ["satellite"])
             w.writeheader()

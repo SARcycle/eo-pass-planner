@@ -16,6 +16,28 @@ uv sync
 uv run eo-pass-planner --help
 ```
 
+## Run without installing (OSGeo4W, locked-down machines)
+
+The tool needs only Python ≥ 3.10 with **numpy** and **PyYAML**, which the
+OSGeo4W Shell (and QGIS's Python) already has. Nothing has to be installed:
+
+```bat
+cd path\to\eo-pass-planner
+python eo-pass-planner.py --help
+python eo-pass-planner.py --name ICEYE --lat 46.948 --lon 7.447 --time 2026-11-14T10:30Z
+```
+
+`python -m eo_pass_planner ...` also works from inside the `src` folder.
+
+SGP4 comes from the [`sgp4`](https://pypi.org/project/sgp4/) package when it is
+installed (fast C++ core). Otherwise the pure-Python copy bundled in
+`src/eo_pass_planner/_vendor/` is used. It gives identical results but is a few
+times slower, which only matters for broad selections over long windows.
+
+On Windows the cache is `C:\Users\<you>\.cache\eo-pass-planner\`. If a proxy
+blocks the CelesTrak download, use `--tle-file` with elements you fetched
+yourself.
+
 Orbital elements are downloaded from [CelesTrak](https://celestrak.org) (GP
 data, `active` group, JSON/OMM format, so catalogue numbers above 99999 work).
 They are cached for 6 h in `~/.cache/eo-pass-planner/`, in line with CelesTrak's
@@ -52,8 +74,9 @@ Selection criteria (`--name`, `--family`, `--type`, `--country`, `--operator`,
 
 ## How it works
 
-1. Every selected satellite is propagated with SGP4 (via Skyfield) over the time
-   window, in the Earth-fixed ITRS frame.
+1. Every selected satellite is propagated with SGP4 over the time window and
+   rotated into the Earth-fixed ITRS frame (GMST1982, polar motion neglected,
+   UT1 ≈ UTC, as Skyfield does by default up to the UT1 approximation).
 2. For each pass the tool solves for the instant at which the line of sight
    satellite → target is perpendicular to the Earth-fixed velocity,
    `(T − r)·v = 0`. For SAR this is the **zero-Doppler time** of the target. For
@@ -133,3 +156,5 @@ uv run pytest
 ```
 
 The tests run offline against a frozen CelesTrak snapshot in `tests/fixture_gp.json`.
+They also check that the frame maths matches Skyfield (a dev-only dependency) and
+that the bundled pure-Python SGP4 matches the installed one.

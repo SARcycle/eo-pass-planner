@@ -34,23 +34,27 @@ dependencies = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.11.*'" },
     { name = "numpy", version = "2.5.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "pyyaml" },
-    { name = "skyfield" },
+    { name = "sgp4" },
 ]
 
 [package.dev-dependencies]
 dev = [
     { name = "pytest" },
+    { name = "skyfield" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "numpy", specifier = ">=1.24" },
     { name = "pyyaml", specifier = ">=6.0" },
-    { name = "skyfield", specifier = ">=1.49" },
+    { name = "sgp4", specifier = ">=2.20" },
 ]
 
 [package.metadata.requires-dev]
-dev = [{ name = "pytest", specifier = ">=9.2.0" }]
+dev = [
+    { name = "pytest", specifier = ">=9.2.0" },
+    { name = "skyfield", specifier = ">=1.49" },
+]
 
 [[package]]
 name = "exceptiongroup"

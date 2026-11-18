@@ -34,9 +34,9 @@ UNKNOWN = Family(name="(unregistered)", pattern=re.compile(r"$^"))
 def load_registry(path: str | Path | None = None) -> list[Family]:
     """Load the registry YAML (the bundled one unless ``path`` is given)."""
     if path is None:
-        text = resources.files("eo_pass_planner").joinpath("registry.yaml").read_text()
+        text = resources.files("eo_pass_planner").joinpath("registry.yaml").read_text(encoding="utf-8")
     else:
-        text = Path(path).read_text()
+        text = Path(path).read_text(encoding="utf-8")
     data = yaml.safe_load(text) or {}
     families = []
     for name, f in (data.get("families") or {}).items():
