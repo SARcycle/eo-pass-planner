@@ -37,7 +37,7 @@ def test_nadir_gsd_is_unchanged():
 
 @pytest.mark.parametrize("name, gsd", [
     ("WORLDVIEW-1 (WV-1)", 0.50), ("WORLDVIEW-3 (WV-3)", 0.31), ("PLEIADES NEO 3", 0.30),
-    ("SKYSAT-C12", 0.57), ("KOMPSAT-3A", 0.55), ("SUPERVIEW NEO-3 01", None), ("ICEYE-X40", None),
+    ("SKYSAT-C12", 0.65), ("SKYSAT-C14", 0.58), ("SKYSAT-A", 0.86), ("LEGION 3", 0.34), ("KOMPSAT-3A", 0.55), ("SUPERVIEW NEO-3 01", None), ("ICEYE-X40", None),
 ])
 def test_registry_nadir_gsd(name, gsd):
     assert classify(name, FAMILIES).nadir_gsd(name) == gsd
@@ -73,3 +73,16 @@ def test_max_gsd_unknown_for_sar():
                          end=datetime(2026, 11, 13, tzinfo=timezone.utc), max_gsd=1.0,
                          include_infeasible=True)
     assert passes and all("GSD unknown" in p.reason for p in passes)
+
+
+def test_band_gsd_and_missing_band():
+    swir = worldview3_passes(bands=["swir"], include_infeasible=True)
+    for p in swir:
+        assert p.gsd_nadir == 3.7 and p.gsd == pytest.approx(math.sqrt(p.gsd_along * p.gsd_cross))
+        assert p.gsd > 3.7 and "swir" in p.band_gsd and p.band_gsd.startswith("pan ")
+    rec = dict(next(r for r in RECORDS if r["OBJECT_NAME"] == "ICEYE-X40"), OBJECT_NAME="WORLDVIEW-1 (WV-1)")
+    passes = find_passes(select([rec], FAMILIES), 46.948, 7.447,
+                         start=datetime(2026, 11, 12, tzinfo=timezone.utc),
+                         end=datetime(2026, 11, 13, tzinfo=timezone.utc), bands=["swir"],
+                         include_infeasible=True)
+    assert passes and all("no swir band" in p.reason for p in passes)

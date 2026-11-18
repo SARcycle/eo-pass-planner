@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .orbit import Satellite, read_tle_file
-from .registry import Family, classify
+from .registry import UNKNOWN, Family, classify, flexible_pattern, normalize_name
 
 CELESTRAK_GP = "https://celestrak.org/NORAD/elements/gp.php"
 USER_AGENT = "eo-pass-planner/0.1 (+https://celestrak.org usage policy respected: cached)"
@@ -138,8 +138,18 @@ def records_from_tle_file(path: str | Path) -> list[dict]:
     out = []
     for sat in read_tle_file(path):
         out.append({"_satellite": sat, "OBJECT_NAME": sat.name or str(sat.model.satnum),
-                    "NORAD_CAT_ID": sat.model.satnum})
+                    "NORAD_CAT_ID": sat.model.satnum,
+                    "OBJECT_ID": _cospar(getattr(sat.model, "intldesg", ""))})
     return out
+
+
+def _cospar(intldesg: str) -> str:
+    """TLE designator such as 14016A -> COSPAR id 2014-016A."""
+    intldesg = (intldesg or "").strip()
+    if len(intldesg) < 5 or not intldesg[:2].isdigit():
+        return ""
+    yy = int(intldesg[:2])
+    return f"{1900 + yy if yy >= 57 else 2000 + yy}-{intldesg[2:]}"
 
 
 @dataclass
@@ -158,23 +168,24 @@ def select(records: list[dict], families: list[Family], *,
     """Filter catalogue records. All given criteria must match (AND).
 
     ``name``, ``family``, ``country`` and ``operator`` are case-insensitive
-    regular expressions (a plain word works as a substring match).
+    regular expressions (a plain word works as a substring match). In ``name``,
+    dashes, underscores and spaces are interchangeable.
     """
     rx = lambda s: re.compile(s, re.IGNORECASE) if s else None  # noqa: E731
-    name_rx, fam_rx, country_rx, op_rx = rx(name), rx(family), rx(country), rx(operator)
+    name_rx = flexible_pattern(name) if name else None
+    fam_rx, country_rx, op_rx = rx(family), rx(country), rx(operator)
     # Filters on registry metadata only make sense for registered satellites.
     needs_registry = registered_only or any([family, sat_type, country, operator])
 
     out = []
     for rec in records:
         obj = rec.get("OBJECT_NAME", "")
-        fam = classify(obj, families)
-        is_registered = fam.pattern.pattern != "$^"
-        if needs_registry and not is_registered:
+        fam = classify(obj, families, norad=int(rec["NORAD_CAT_ID"]), cospar=rec.get("OBJECT_ID"))
+        if needs_registry and fam is UNKNOWN:
             continue
         if norad and int(rec["NORAD_CAT_ID"]) not in norad:
             continue
-        if name_rx and not name_rx.search(obj):
+        if name_rx and not name_rx.search(normalize_name(obj)):
             continue
         if fam_rx and not fam_rx.search(fam.name):
             continue

@@ -5,14 +5,17 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import os
 import re
 import sys
+
+import yaml
 from datetime import datetime, timedelta, timezone
 
 from .catalog import (MAX_AGE_HOURS, cache_age_hours, fetch_gp, records_from_tle_file,
                       refresh_selected, select)
 from .geometry import find_passes
-from .registry import load_registry
+from .registry import BAND_GROUPS, load_registry, user_registry_path
 
 EPILOG = """\
 examples:
@@ -63,6 +66,17 @@ def _fmt_gsd(value: float | None) -> str:
     return f"{value:5.2f}" if value < 10 else f"{value:5.1f}"
 
 
+def show_registry(path: str | None = None) -> int:
+    """Print the merged registry as YAML, each family preceded by its source."""
+    upath = user_registry_path()
+    print(f"# user registry: {upath} ({'found' if upath.exists() else 'not present'})")
+    for fam in load_registry(path):
+        print(f"\n# from: {fam.source}")
+        print(yaml.safe_dump({fam.name: fam.raw}, sort_keys=False, allow_unicode=True,
+                             default_flow_style=None).rstrip())
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="eo-pass-planner",
@@ -102,6 +116,9 @@ def build_parser() -> argparse.ArgumentParser:
     g.add_argument("--off-nadir-max", type=float)
     g.add_argument("--max-gsd", type=float,
                    help="optical: only passes whose GSD at the pass geometry is <= this (m)")
+    g.add_argument("--band", nargs="+", choices=BAND_GROUPS, metavar="GROUP",
+                   help=f"optical: require these band groups ({', '.join(BAND_GROUPS)}); "
+                        "--max-gsd then applies to the coarsest of them")
     g.add_argument("--look-side", choices=["left", "right", "both"])
     g.add_argument("--min-sun", type=float, help="minimum sun elevation at target (deg)")
     g.add_argument("--all", action="store_true", help="also show passes outside the sensor envelope")
@@ -110,7 +127,9 @@ def build_parser() -> argparse.ArgumentParser:
     g.add_argument("--tle-file", help="use a local TLE/3LE file instead of CelesTrak")
     g.add_argument("--group", default="active", help="CelesTrak group (default: active)")
     g.add_argument("--refresh", action="store_true", help="force re-download of orbital elements")
-    g.add_argument("--registry", help="custom registry YAML")
+    g.add_argument("--registry", help="extra registry YAML, merged over the bundled and user ones")
+    g.add_argument("--show-registry", action="store_true",
+                   help="print the merged registry with the source of each family and exit")
     g.add_argument("--step", type=float, default=20.0, help="search step in seconds (default 20)")
     g.add_argument("--csv", help="write results to this CSV file")
     g.add_argument("--json", action="store_true", help="print results as JSON")
@@ -119,6 +138,12 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    # Expand ~ ourselves: Windows shells pass it through literally.
+    for opt in ("csv", "tle_file", "registry"):
+        if getattr(args, opt):
+            setattr(args, opt, os.path.expanduser(getattr(args, opt)))
+    if args.show_registry:
+        return show_registry(args.registry)
     families = load_registry(args.registry)
 
     if args.tle_file:
@@ -149,24 +174,26 @@ def main(argv: list[str] | None = None) -> int:
         print("No satellites match the selection.", file=sys.stderr)
         return 1
 
-    if args.max_gsd is not None and not args.all:
-        # Skip satellites that cannot reach the GSD even at nadir.
+    if (args.max_gsd is not None or args.band) and not args.all:
+        # Skip satellites without the bands, or that cannot reach the GSD even at nadir.
         cands = [c for c in cands
-                 if (g0 := c.family.nadir_gsd(c.name)) is not None and g0 <= args.max_gsd]
+                 if (g0 := c.family.nadir_gsd(c.name, args.band)) is not None
+                 and (args.max_gsd is None or g0 <= args.max_gsd)]
         if not cands:
-            print(f"No selected satellite has a known nadir GSD <= {args.max_gsd:g} m.",
-                  file=sys.stderr)
+            want = f" with {'+'.join(args.band)}" if args.band else ""
+            limit = f" and a nadir GSD <= {args.max_gsd:g} m" if args.max_gsd is not None else ""
+            print(f"No selected satellite has known bands{want}{limit}.", file=sys.stderr)
             return 1
 
     if args.list:
         print(f"{len(cands)} satellites (source: {source})")
-        print(f"{'NORAD':>6}  {'name':<32} {'family':<24} {'type':<8} {'country':<16} {'incl':>6} "
-              f"{'gsd0':>5}  epoch")
+        print(f"{'NORAD':>6}  {'name':<32} {'family':<24} {'type':<8} {'country':<16} {'incl':>6}  "
+              f"{'epoch':<16}  bands (nadir GSD m)")
         for c in sorted(cands, key=lambda c: c.name):
             print(f"{c.norad:>6}  {c.name:<32} {c.family.name:<24} {c.family.type:<8} "
-                  f"{c.family.country:<16} {c.satellite.model.inclo * 57.29578:6.2f} "
-                  f"{_fmt_gsd(c.family.nadir_gsd(c.name))}  "
-                  f"{c.satellite.epoch:%Y-%m-%d %H:%M}")
+                  f"{c.family.country:<16} {c.satellite.model.inclo * 57.29578:6.2f}  "
+                  f"{c.satellite.epoch:%Y-%m-%d %H:%M}  "
+                  + " ".join(f"{b} {v:g}" for b, v in c.family.nadir_bands(c.name).items()))
         return 0
 
     if args.inc_tol is not None and args.incidence is None:
@@ -201,7 +228,7 @@ def main(argv: list[str] | None = None) -> int:
     passes = find_passes(cands, args.lat, args.lon, start=start, end=end, ref_time=ref,
                          height_m=args.height, step_s=args.step, incidence_range=inc_rng,
                          off_nadir_range=onr, min_sun_elevation=args.min_sun,
-                         look_side=args.look_side, max_gsd=args.max_gsd,
+                         look_side=args.look_side, max_gsd=args.max_gsd, bands=args.band,
                          include_infeasible=args.all)
 
     if args.incidence is not None:

@@ -70,6 +70,9 @@ uv run eo-pass-planner --type optical --lat 46.948 --lon 7.447 --start now --end
 # Only optical satellites that deliver 1 m GSD or better at this geometry
 uv run eo-pass-planner --type optical --lat 46.948 --lon 7.447 --start now --end +7d --max-gsd 1
 
+# Optical satellites with SWIR, at 5 m or better in SWIR
+uv run eo-pass-planner --type optical --band swir --lat 46.948 --lon 7.447 --start now --end +7d --max-gsd 5
+
 # All Japanese SAR satellites over the next 24 h
 uv run eo-pass-planner --type sar --country japan --lat 46.948 --lon 7.447 --start now --end +24h
 
@@ -114,7 +117,7 @@ Selection criteria (`--name`, `--family`, `--type`, `--country`, `--operator`,
 | `look_az` | azimuth of the line of sight satellite → target, at the target (≈ `hdg_scn` ± 90°) |
 | `inc` | incidence angle at the target relative to the WGS84 ellipsoid normal |
 | `offnad` | off-nadir (look) angle at the satellite |
-| `gsd` | optical: expected panchromatic GSD (m) at this pass geometry, see [Resolution](#resolution-gsd) (`-` if unknown) |
+| `gsd` | optical: expected GSD (m) at this pass geometry, finest band or the `--band` selection, see [Resolution](#resolution-gsd-and-bands) (`-` if unknown) |
 | `grd_km` | ground distance sub-satellite point → target |
 | `sun` | sun elevation at the target (deg) |
 | `LST` | local mean solar time at the target |
@@ -125,27 +128,33 @@ Selection criteria (`--name`, `--family`, `--type`, `--country`, `--operator`,
 The CSV/JSON output also contains slant range, altitude, sub-satellite point,
 inclination and the element epoch.
 
-## Resolution (GSD)
+## Resolution (GSD) and bands
 
-For optical satellites the registry holds a nominal **panchromatic GSD at
-nadir** (native sensor values from public specifications, not resampled
-product pixel sizes). The tool scales it to the actual pass geometry. The
-pixel's angular size is fixed, so its footprint grows with slant range `R`
-relative to the altitude `h`. Across track, the ground is also tilted by the
-incidence angle against the line of sight:
+For optical satellites the registry holds the **nadir GSD per band group**:
+`pan`, `vis` (blue, green, red), `nir`, `rededge`, `swir`, `tir`. These are
+native sensor values from public specifications, not resampled product pixel
+sizes. The tool scales them to the pass geometry. The pixel footprint grows
+with slant range `R` relative to the altitude `h`, and across track also with
+the incidence angle:
 
     along = gsd0 * R / h        cross = along / cos(incidence)        gsd = sqrt(along * cross)
 
 `gsd` is the geometric mean, as vendors usually quote off-nadir GSD. For example,
 WorldView-3 at 0.31 m at nadir gives 0.34 m at 20° off-nadir, matching Maxar's figure.
-CSV/JSON also contain `gsd_nadir`, `gsd_along` and `gsd_cross`.
 
-`--max-gsd 1` keeps only passes with `gsd <= 1 m`. Satellites that cannot
-reach it even at nadir, or whose GSD is unknown, are skipped (`--all` shows
-them with the reason). `--list` shows the nadir GSD as `gsd0`. Check the
-values for the missions you rely on: they are approximate and some are
-missing (SuperView Neo-3). SAR resolution depends on the imaging mode rather
-than mainly on the angle, so SAR satellites have no GSD here.
+* Without `--band`, `gsd` is the finest band, usually pan.
+* `--band swir` keeps only satellites with SWIR, and `gsd` then refers to SWIR.
+  With several groups, e.g. `--band vis nir`, all are required and `gsd` is the
+  coarsest of them.
+* `--max-gsd 1` keeps only passes with `gsd <= 1 m`. Satellites that cannot
+  reach it even at nadir are skipped; `--all` shows them with the reason.
+* CSV/JSON also contain `gsd_nadir`, `gsd_along`, `gsd_cross` and `band_gsd`,
+  the GSD of every band group at the pass geometry. `--list` shows the nadir
+  values.
+
+Check the values for the missions you rely on: they are approximate and some
+are missing. SAR resolution depends on the imaging mode rather than mainly on
+the angle, so SAR satellites have no GSD here.
 
 ## Accuracy
 
@@ -164,13 +173,45 @@ than mainly on the angle, so SAR satellites have no GSD here.
 
 ## Registry
 
-[`src/eo_pass_planner/registry.yaml`](src/eo_pass_planner/registry.yaml) maps name
-patterns to sensor type, operator, country, look side and viewing envelope.
-The angle envelopes are approximate public figures. Override them per run
-(`--inc-min/--inc-max`, `--off-nadir-min/--off-nadir-max`, `--look-side`, `--min-sun`), or pass
-your own file with `--registry`. Satellites not in the registry can still be
-selected by `--name`/`--norad`. They are treated as type `unknown` with a
-generous 0–60° off-nadir envelope.
+[`src/eo_pass_planner/registry.yaml`](src/eo_pass_planner/registry.yaml) defines
+satellite families: how to recognise their satellites, sensor type, operator,
+country, look side, viewing envelope and bands.
+
+To add or change satellites, create your own registry file. It is merged over
+the bundled one, so it only needs what you add or change:
+
+* Linux: `~/.config/eo-pass-planner/registry.yaml`
+* Windows: `C:\Users\<you>\.config\eo-pass-planner\registry.yaml`
+
+```yaml
+families:
+  Gaofen-2:                   # new family
+    pattern: '^GAOFEN-2'
+    type: optical
+    country: China
+    off_nadir: [0, 35]
+    min_sun_elevation: 10
+    bands: {pan: 0.8, vis: 3.2, nir: 3.2}
+  WorldView:                  # change one field of a bundled family
+    off_nadir: [0, 30]
+  Landsat: null               # remove a bundled family
+```
+
+Satellites are matched by `norad` numbers or `cospar` ids (a prefix such as
+`2024-149` matches a whole launch) if given, otherwise by the name `pattern`.
+In patterns, dashes, underscores and spaces are interchangeable and optional,
+so `SENTINEL-2` also matches `SENTINEL 2A` and `SENTINEL2A`. Families from your
+file are checked before the bundled ones, so they can take single satellites
+out of a broader family.
+
+`--show-registry` prints the merged result and where each family comes from;
+copy an entry from there as a starting point. `--registry FILE` merges one more
+file on top for a single run. Angle limits can also be overridden per run
+(`--inc-min/--inc-max`, `--off-nadir-min/--off-nadir-max`, `--look-side`,
+`--min-sun`).
+
+Satellites not in the registry can still be selected by `--name`/`--norad`.
+They are treated as type `unknown` with a generous 0–60° off-nadir envelope.
 
 ## Python API
 

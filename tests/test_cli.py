@@ -56,9 +56,28 @@ def test_tolerance_needs_target(capsys, args):
 
 def test_max_gsd_drops_satellites_without_gsd(capsys):
     assert main([*WHERE, "--max-gsd", "1"]) == 1
-    assert "No selected satellite has a known nadir GSD <= 1 m" in capsys.readouterr().err
+    assert "No selected satellite has known bands and a nadir GSD <= 1 m" in capsys.readouterr().err
 
 
-def test_list_shows_gsd_column(capsys):
+def test_band_filter_drops_satellites_without_band(capsys):
+    assert main([*WHERE, "--band", "swir"]) == 1
+    assert "known bands with swir" in capsys.readouterr().err
+
+
+def test_list_shows_bands_column(capsys):
     assert main(["--name", "ICEYE", "--list"]) == 0
-    assert "gsd0" in capsys.readouterr().out
+    assert "bands (nadir GSD m)" in capsys.readouterr().out
+
+
+def test_show_registry(capsys):
+    assert main(["--show-registry"]) == 0
+    out = capsys.readouterr().out
+    assert "# user registry:" in out and "not present" in out
+    assert "# from: bundled\nWorldView:" in out
+
+
+def test_tilde_expands_to_home(capsys, tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path))       # what Windows uses
+    assert main([*WHERE, "--csv", "~/passes.csv"]) == 0
+    assert (tmp_path / "passes.csv").read_text().startswith("satellite,")

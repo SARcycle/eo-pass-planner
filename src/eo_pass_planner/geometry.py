@@ -20,6 +20,7 @@ approach, i.e. when the target is broadside / perpendicular to the track.
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
 from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
 
@@ -48,6 +49,7 @@ class Pass:
     gsd: float | None             # GSD at this geometry (m)
     gsd_along: float | None       # along-track GSD (m)
     gsd_cross: float | None       # across-track GSD (m)
+    band_gsd: str                 # GSD per band group at this geometry, e.g. "pan 0.34 vis 1.36"
     ground_range_km: float        # sub-satellite point -> target
     slant_range_km: float
     altitude_km: float
@@ -136,11 +138,14 @@ def find_passes(candidates: list[Candidate], lat: float, lon: float, *,
                 min_sun_elevation: float | None = None,
                 look_side: str | None = None,
                 max_gsd: float | None = None,
+                bands: Sequence[str] | None = None,
                 include_infeasible: bool = False) -> list[Pass]:
     """Predict every pass of ``candidates`` over the target between start and end.
 
     Range/sun/look-side arguments override the per-family registry values.
-    ``max_gsd`` rejects passes with a coarser or unknown GSD.
+    ``max_gsd`` rejects passes with a coarser or unknown GSD. With ``bands``,
+    GSD refers to the coarsest of those band groups and satellites lacking
+    one of them are rejected.
     Passes that violate the limits are dropped unless ``include_infeasible``.
     """
     start = start.astimezone(timezone.utc)
@@ -184,11 +189,14 @@ def find_passes(candidates: list[Candidate], lat: float, lon: float, *,
             ground = 6371.0088 * math.acos(max(-1.0, min(1.0,
                      math.sin(p1) * math.sin(p2) + math.cos(p1) * math.cos(p2) * math.cos(dl))))
 
-            g0 = fam.nadir_gsd(cand.name)
+            have = fam.nadir_bands(cand.name)
+            g0 = fam.nadir_gsd(cand.name, bands)
+            f_along, f_cross = off_nadir_gsd(1.0, slant, sub_h, incidence)
+            factor = math.sqrt(f_along * f_cross)
             gsd = gsd_along = gsd_cross = None
             if g0 is not None:
-                gsd_along, gsd_cross = off_nadir_gsd(g0, slant, sub_h, incidence)
-                gsd = math.sqrt(gsd_along * gsd_cross)
+                gsd, gsd_along, gsd_cross = g0 * factor, g0 * f_along, g0 * f_cross
+            band_gsd = " ".join(f"{b} {v * factor:.2f}" for b, v in have.items())
 
             when = datetime_from_jd(jd0, fr)
             epoch = sat.epoch.replace(microsecond=0)
@@ -204,6 +212,7 @@ def find_passes(candidates: list[Candidate], lat: float, lon: float, *,
                 look_azimuth=_azimuth(los_sat_to_tgt, e_t, n_t),
                 incidence=incidence, off_nadir=off_nadir,
                 gsd_nadir=g0, gsd=gsd, gsd_along=gsd_along, gsd_cross=gsd_cross,
+                band_gsd=band_gsd,
                 ground_range_km=ground, slant_range_km=slant,
                 altitude_km=sub_h, sub_lat=sub_lat, sub_lon=sub_lon,
                 sun_elevation=sun, local_solar_time=f"{int(lst_h):02d}:{int(lst_h % 1 * 60):02d}",
@@ -229,7 +238,10 @@ def find_passes(candidates: list[Candidate], lat: float, lon: float, *,
             sun_min = min_sun_elevation if min_sun_elevation is not None else fam.min_sun_elevation
             if sun_min is not None and sun < sun_min:
                 reasons.append(f"sun {sun:.1f} below {sun_min:g}")
-            if max_gsd is not None:
+            missing = [b for b in bands or () if b not in have]
+            if missing:
+                reasons.append(f"no {'/'.join(missing)} band")
+            elif max_gsd is not None:
                 if gsd is None:
                     reasons.append("GSD unknown")
                 elif gsd > max_gsd:

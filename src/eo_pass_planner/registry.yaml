@@ -1,8 +1,12 @@
 # Satellite family registry.
 #
-# Each family maps a regular expression on the CelesTrak OBJECT_NAME to metadata
-# used for filtering (type / operator / country) and to the viewing geometry the
-# sensor can achieve, which decides whether a pass can image the target at all.
+# Each family maps catalogue entries to metadata used for filtering and to the
+# viewing geometry the sensor can achieve. Satellites are matched by
+#
+#   norad:       [catalogue numbers]                 checked first
+#   cospar:      [COSPAR ids or prefixes, e.g. 2024-149]
+#   pattern:     regex on the satellite name; dashes, underscores and spaces
+#                are interchangeable and optional
 #
 #   type:        sar | optical
 #   look_side:   left | right | both        (direction the sensor can point)
@@ -12,13 +16,14 @@
 #                (used for optical; also accepted for SAR)
 #   min_sun_elevation: optical only; passes with the sun lower than this at the
 #                target are dropped (degrees)
-#   gsd:         optical only; nominal panchromatic GSD at nadir (m), either
-#                one value or {name regex: value}. Approximate public figures.
+#   bands:       optical only; nadir GSD (m) per band group: pan, vis (blue,
+#                green, red), nir, rededge, swir, tir. Either one mapping or
+#                {name regex: mapping} when satellites differ.
+#   gsd:         shorthand when the bands are not known: finest GSD at nadir
 #
-# The angle ranges are approximate, publicly documented envelopes. Commercial
-# tasking limits can be narrower or wider; override them on the command line
-# (--inc-min/--inc-max, --off-nadir-min/--off-nadir-max) or with your own
-# registry (--registry).
+# Angles and GSDs are approximate public figures. Override them on the command
+# line, or add and change families in your own registry file, which is merged
+# over this one (see README, --show-registry).
 
 families:
   # ------------------------------------------------------------------ SAR ---
@@ -144,7 +149,7 @@ families:
     look_side: both
     off_nadir: [0, 10.5]
     min_sun_elevation: 0
-    gsd: 10
+    bands: {vis: 10, nir: 10, rededge: 20, swir: 20}
   Landsat:
     pattern: '^LANDSAT [89]'
     type: optical
@@ -153,7 +158,7 @@ families:
     look_side: both
     off_nadir: [0, 7.5]
     min_sun_elevation: 0
-    gsd: 15
+    bands: {pan: 15, vis: 30, nir: 30, swir: 30, tir: 100}
   Pleiades:
     pattern: '^PLEIADES 1'
     type: optical
@@ -162,7 +167,7 @@ families:
     look_side: both
     off_nadir: [0, 30]
     min_sun_elevation: 10
-    gsd: 0.70
+    bands: {pan: 0.70, vis: 2.8, nir: 2.8}
   Pleiades-Neo:
     pattern: '^PLEIADES NEO'
     type: optical
@@ -171,7 +176,7 @@ families:
     look_side: both
     off_nadir: [0, 30]
     min_sun_elevation: 10
-    gsd: 0.30
+    bands: {pan: 0.30, vis: 1.2, nir: 1.2, rededge: 1.2}
   SPOT:
     pattern: '^SPOT [67]'
     type: optical
@@ -180,7 +185,7 @@ families:
     look_side: both
     off_nadir: [0, 30]
     min_sun_elevation: 10
-    gsd: 1.5
+    bands: {pan: 1.5, vis: 6.0, nir: 6.0}
   CO3D:
     pattern: '^CO3D'
     type: optical
@@ -189,7 +194,7 @@ families:
     look_side: both
     off_nadir: [0, 30]
     min_sun_elevation: 10
-    gsd: 0.50
+    bands: {vis: 0.50, nir: 0.50}
   WorldView:
     pattern: '^WORLDVIEW'
     type: optical
@@ -198,10 +203,10 @@ families:
     look_side: both
     off_nadir: [0, 45]
     min_sun_elevation: 10
-    gsd:
-      'WORLDVIEW-1': 0.50
-      'WORLDVIEW-2': 0.46
-      'WORLDVIEW-3': 0.31
+    bands:
+      'WORLDVIEW-1': {pan: 0.50}
+      'WORLDVIEW-2': {pan: 0.46, vis: 1.84, nir: 1.84, rededge: 1.84}
+      'WORLDVIEW-3': {pan: 0.31, vis: 1.24, nir: 1.24, rededge: 1.24, swir: 3.7}
   WorldView-Legion:
     pattern: '^LEGION'
     type: optical
@@ -210,7 +215,7 @@ families:
     look_side: both
     off_nadir: [0, 45]
     min_sun_elevation: 10
-    gsd: 0.29
+    bands: {pan: 0.34, vis: 1.36, nir: 1.36, rededge: 1.36}
   SkySat:
     pattern: '^SKYSAT'
     type: optical
@@ -219,9 +224,10 @@ families:
     look_side: both
     off_nadir: [0, 30]
     min_sun_elevation: 10
-    gsd:
-      'SKYSAT-C': 0.57
-      'SKYSAT-[AB]': 0.9
+    bands:                     # A, B = SkySat-1, 2; Cn = SkySat-(n+2)
+      'SKYSAT-[AB]': {pan: 0.86, vis: 1.0, nir: 1.0}
+      'SKYSAT-C1[4-9]\b': {pan: 0.58, vis: 0.72, nir: 0.72}
+      'SKYSAT-C': {pan: 0.65, vis: 0.81, nir: 0.81}
   PlanetScope:
     pattern: '^FLOCK'
     type: optical
@@ -230,7 +236,7 @@ families:
     look_side: both
     off_nadir: [0, 3]
     min_sun_elevation: 10
-    gsd: 3.7
+    bands: {vis: 3.7, nir: 3.7, rededge: 3.7}
   SuperView:
     pattern: '^SUPERVIEW'
     type: optical
@@ -239,9 +245,9 @@ families:
     look_side: both
     off_nadir: [0, 45]
     min_sun_elevation: 10
-    gsd:                       # Neo-3 unknown
-      'SUPERVIEW-1': 0.50
-      'SUPERVIEW NEO-1': 0.30
+    bands:                     # Neo-3 unknown
+      'SUPERVIEW-1': {pan: 0.50, vis: 2.0, nir: 2.0}
+      'SUPERVIEW NEO-1': {pan: 0.30, vis: 1.2, nir: 1.2}
   KOMPSAT:
     pattern: '^KOMPSAT-(3A|7)'
     type: optical
@@ -250,6 +256,6 @@ families:
     look_side: both
     off_nadir: [0, 30]
     min_sun_elevation: 10
-    gsd:
-      'KOMPSAT-3A': 0.55
-      'KOMPSAT-7': 0.30
+    bands:
+      'KOMPSAT-3A': {pan: 0.55, vis: 2.2, nir: 2.2}
+      'KOMPSAT-7': {pan: 0.30, vis: 1.2, nir: 1.2}
