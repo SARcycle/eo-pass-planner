@@ -237,3 +237,9 @@ uv run pytest
 The tests run offline against a frozen CelesTrak snapshot in `tests/fixture_gp.json`.
 They also check that the frame maths matches Skyfield (a dev-only dependency) and
 that the bundled pure-Python SGP4 matches the installed one.
+
+## License
+
+GPL-3.0-or-later, see [LICENSE](LICENSE). The bundled copy of
+[sgp4](https://pypi.org/project/sgp4/) in `src/eo_pass_planner/_vendor/` is
+MIT-licensed, see its own licence file.

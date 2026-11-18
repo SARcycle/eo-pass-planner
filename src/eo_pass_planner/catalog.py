@@ -18,7 +18,7 @@ from .orbit import Satellite, read_tle_file
 from .registry import UNKNOWN, Family, classify, flexible_pattern, normalize_name
 
 CELESTRAK_GP = "https://celestrak.org/NORAD/elements/gp.php"
-USER_AGENT = "eo-pass-planner/0.1 (+https://celestrak.org usage policy respected: cached)"
+USER_AGENT = "eo-pass-planner/0.1 (+https://github.com/SARcycle/eo-pass-planner)"
 MAX_AGE_HOURS = 6.0
 MAX_SINGLE_QUERIES = 10       # max. number of per-satellite requests
 _NOT_A_PAYLOAD = re.compile(r"\b(DEB|R/B|AKM|PKM|COOLANT)\b")

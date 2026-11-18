@@ -1,17 +1,33 @@
 [project]
 name = "eo-pass-planner"
 version = "0.1.0"
-description = "Predict satellite passes over a location and the acquisition geometry (heading, ASC/DESC, look side, incidence)"
+description = "Predict SAR and optical satellite passes over a target, with acquisition geometry and expected resolution"
 readme = "README.md"
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE", "src/eo_pass_planner/_vendor/sgp4/LICENSE"]
 authors = [
     { name = "SARCycle", email = "57989133+SARcycle@users.noreply.github.com" }
 ]
 requires-python = ">=3.10"
+keywords = ["earth observation", "satellite", "SAR", "optical", "pass prediction", "SGP4", "tasking"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: GIS",
+    "Topic :: Scientific/Engineering :: Astronomy",
+]
 dependencies = [
     "numpy>=1.24",
     "pyyaml>=6.0",
     "sgp4>=2.20",
 ]
+
+[project.urls]
+Homepage = "https://github.com/SARcycle/eo-pass-planner"
+Issues = "https://github.com/SARcycle/eo-pass-planner/issues"
 
 [project.scripts]
 eo-pass-planner = "eo_pass_planner:main"
