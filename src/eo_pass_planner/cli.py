@@ -9,7 +9,8 @@ import re
 import sys
 from datetime import datetime, timedelta, timezone
 
-from .catalog import fetch_gp, records_from_tle_file, select
+from .catalog import (MAX_AGE_HOURS, cache_age_hours, fetch_gp, records_from_tle_file,
+                      refresh_selected, select)
 from .geometry import find_passes
 from .registry import load_registry
 
@@ -104,8 +105,25 @@ def main(argv: list[str] | None = None) -> int:
     else:
         records, source = fetch_gp(args.group, refresh=args.refresh)
 
-    cands = select(records, families, name=args.name, family=args.family, sat_type=args.type,
-                   country=args.country, operator=args.operator, norad=args.norad)
+    def _select(recs):
+        return select(recs, families, name=args.name, family=args.family, sat_type=args.type,
+                      country=args.country, operator=args.operator, norad=args.norad)
+
+    cands = _select(records)
+    if not args.tle_file and cache_age_hours(source) >= MAX_AGE_HOURS:
+        # Full download failed: fetch only the selected satellites.
+        records, how = refresh_selected(records, cands, name=args.name, refresh=args.refresh)
+        if how:
+            cands = _select(records)
+            source = f"{source} + CelesTrak {how}"
+            print(f"         fetched current elements for the selection instead ({how})",
+                  file=sys.stderr)
+        elif how is None:
+            print("         to refresh just your satellites, select them with a plain --name "
+                  "(e.g. ICEYE) or narrow the selection to <= 10 satellites", file=sys.stderr)
+        else:
+            print("         the selected satellites could not be fetched individually either",
+                  file=sys.stderr)
     if not cands:
         print("No satellites match the selection.", file=sys.stderr)
         return 1

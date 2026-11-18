@@ -41,7 +41,12 @@ yourself.
 Orbital elements are downloaded from [CelesTrak](https://celestrak.org) (GP
 data, `active` group, JSON/OMM format, so catalogue numbers above 99999 work).
 They are cached for 6 h in `~/.cache/eo-pass-planner/`, in line with CelesTrak's
-usage policy. Use `--refresh` to force a download, or `--tle-file` to supply your
+usage policy. CelesTrak serves each query only once per data update (about every
+2 h) to the same IP address and answers HTTP 403 otherwise, e.g. when a
+colleague behind the same company network already downloaded it. The tool then
+uses the cached catalogue and fetches just the selected satellites with a small
+`NAME=` query (if `--name` is a plain word such as `ICEYE`) or up to 10 `CATNR=`
+queries. Use `--refresh` to force a download, or `--tle-file` to supply your
 own elements (e.g. from Space-Track) for offline or historical runs.
 
 ## Examples
