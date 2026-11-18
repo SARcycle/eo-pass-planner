@@ -57,6 +57,7 @@ class Pass:
     feasible: bool = True
     reason: str = ""
     incidence_delta: float | None = None
+    off_nadir_delta: float | None = None
 
     def as_dict(self) -> dict:
         d = asdict(self)

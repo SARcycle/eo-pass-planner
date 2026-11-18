@@ -22,6 +22,10 @@ examples:
   # Same, rank by a known incidence angle (sanity check)
   eo-pass-planner --name ICEYE --lat 46.948 --lon 7.447 --time 2026-11-20T10:30Z --incidence 28
 
+  # Optical: rank by an expected off-nadir angle
+  eo-pass-planner --family Pleiades --lat 46.948 --lon 7.447 --time 2026-11-20T10:30Z --window 3h \
+      --off-nadir 12 --onad-tol 3
+
   # All SAR satellites from Japan over the next 24 h
   eo-pass-planner --type sar --country japan --lat 35.68 --lon 139.69 --start now --end +24h
 
@@ -80,6 +84,11 @@ def build_parser() -> argparse.ArgumentParser:
     g.add_argument("--inc-tol", type=float, help="drop passes whose incidence differs more than this")
     g.add_argument("--inc-min", type=float)
     g.add_argument("--inc-max", type=float)
+    g.add_argument("--off-nadir", type=float,
+                   help="expected off-nadir angle (optical); ranks passes by match")
+    g.add_argument("--onad-tol", type=float,
+                   help="drop passes whose off-nadir angle differs more than this")
+    g.add_argument("--off-nadir-min", type=float)
     g.add_argument("--off-nadir-max", type=float)
     g.add_argument("--look-side", choices=["left", "right", "both"])
     g.add_argument("--min-sun", type=float, help="minimum sun elevation at target (deg)")
@@ -137,6 +146,12 @@ def main(argv: list[str] | None = None) -> int:
                   f"{c.satellite.epoch:%Y-%m-%d %H:%M}")
         return 0
 
+    if args.inc_tol is not None and args.incidence is None:
+        print("--inc-tol needs --incidence.", file=sys.stderr)
+        return 2
+    if args.onad_tol is not None and args.off_nadir is None:
+        print("--onad-tol needs --off-nadir.", file=sys.stderr)
+        return 2
     if args.lat is None or args.lon is None:
         print("--lat and --lon are required (or use --list).", file=sys.stderr)
         return 2
@@ -155,7 +170,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.inc_min is not None or args.inc_max is not None:
         inc_rng = (args.inc_min if args.inc_min is not None else 0.0,
                    args.inc_max if args.inc_max is not None else 90.0)
-    onr = (0.0, args.off_nadir_max) if args.off_nadir_max is not None else None
+    onr = None
+    if args.off_nadir_min is not None or args.off_nadir_max is not None:
+        onr = (args.off_nadir_min if args.off_nadir_min is not None else 0.0,
+               args.off_nadir_max if args.off_nadir_max is not None else 90.0)
 
     passes = find_passes(cands, args.lat, args.lon, start=start, end=end, ref_time=ref,
                          height_m=args.height, step_s=args.step, incidence_range=inc_rng,
@@ -167,7 +185,15 @@ def main(argv: list[str] | None = None) -> int:
             p.incidence_delta = p.incidence - args.incidence
         if args.inc_tol is not None:
             passes = [p for p in passes if abs(p.incidence_delta) <= args.inc_tol]
+    if args.off_nadir is not None:
+        for p in passes:
+            p.off_nadir_delta = p.off_nadir - args.off_nadir
+        if args.onad_tol is not None:
+            passes = [p for p in passes if abs(p.off_nadir_delta) <= args.onad_tol]
+    if args.incidence is not None:
         passes.sort(key=lambda p: (not p.feasible, abs(p.incidence_delta)))
+    elif args.off_nadir is not None:
+        passes.sort(key=lambda p: (not p.feasible, abs(p.off_nadir_delta)))
     else:
         passes.sort(key=lambda p: (not p.feasible, abs(p.offset_min)))
 
@@ -191,6 +217,8 @@ def main(argv: list[str] | None = None) -> int:
            f"{'grd_km':>6} {'sun':>5} {'LST':>5} {'TLEage':>6}")
     if args.incidence is not None:
         hdr += f" {'dInc':>5}"
+    if args.off_nadir is not None:
+        hdr += f" {'dOnad':>5}"
     if args.all:
         hdr += "  note"
     print(hdr)
@@ -202,6 +230,8 @@ def main(argv: list[str] | None = None) -> int:
                 f"{p.tle_age_days:5.1f}d")
         if args.incidence is not None:
             line += f" {p.incidence_delta:+5.1f}"
+        if args.off_nadir is not None:
+            line += f" {p.off_nadir_delta:+5.1f}"
         if args.all:
             line += "  " + ("ok" if p.feasible else p.reason)
         print(line)

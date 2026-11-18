@@ -61,6 +61,12 @@ uv run eo-pass-planner --name ICEYE --lat 46.948 --lon 7.447 --time 2026-11-14T1
 # Keep only candidates within +/-3 deg of that incidence
 uv run eo-pass-planner --name ICEYE --lat 46.948 --lon 7.447 --time 2026-11-14T10:30Z --incidence 28 --inc-tol 3
 
+# Optical: rank by an expected off-nadir angle, keep passes within +/-3 deg of it
+uv run eo-pass-planner --family Pleiades --lat 46.948 --lon 7.447 --time 2026-11-14T10:30Z --window 3h --off-nadir 12 --onad-tol 3
+
+# Optical over the next 2 days, off-nadir 5-20 deg, sun at least 15 deg up
+uv run eo-pass-planner --type optical --lat 46.948 --lon 7.447 --start now --end +2d --off-nadir-min 5 --off-nadir-max 20 --min-sun 15
+
 # All Japanese SAR satellites over the next 24 h
 uv run eo-pass-planner --type sar --country japan --lat 46.948 --lon 7.447 --start now --end +24h
 
@@ -110,6 +116,7 @@ Selection criteria (`--name`, `--family`, `--type`, `--country`, `--operator`,
 | `LST` | local mean solar time at the target |
 | `TLEage` | time between the orbital-element epoch and the predicted pass |
 | `dInc` | predicted minus expected incidence (only with `--incidence`) |
+| `dOnad` | predicted minus expected off-nadir angle (only with `--off-nadir`) |
 
 The CSV/JSON output also contains slant range, altitude, sub-satellite point,
 inclination and the element epoch.
@@ -134,7 +141,7 @@ inclination and the element epoch.
 [`src/eo_pass_planner/registry.yaml`](src/eo_pass_planner/registry.yaml) maps name
 patterns to sensor type, operator, country, look side and viewing envelope.
 The angle envelopes are approximate public figures. Override them per run
-(`--inc-min/--inc-max`, `--off-nadir-max`, `--look-side`, `--min-sun`), or pass
+(`--inc-min/--inc-max`, `--off-nadir-min/--off-nadir-max`, `--look-side`, `--min-sun`), or pass
 your own file with `--registry`. Satellites not in the registry can still be
 selected by `--name`/`--norad`. They are treated as type `unknown` with a
 generous 0–60° off-nadir envelope.
