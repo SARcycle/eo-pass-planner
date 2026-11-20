@@ -34,9 +34,13 @@ installed (fast C++ core). Otherwise the pure-Python copy bundled in
 `src/eo_pass_planner/_vendor/` is used. It gives identical results but is a few
 times slower, which only matters for broad selections over long windows.
 
-On Windows the cache is `C:\Users\<you>\.cache\eo-pass-planner\`. If a proxy
-blocks the CelesTrak download, use `--tle-file` with elements you fetched
-yourself.
+On Windows the cache is `C:\Users\<you>\.cache\eo-pass-planner\`.
+
+On company networks Python may not get through to CelesTrak. Then either set
+the proxy before running the tool (`set HTTPS_PROXY=http://<proxy>:<port>`), or
+open <https://celestrak.org/NORAD/elements/gp.php?GROUP=active&FORMAT=json> in
+a browser, save it, and pass the file with `--tle-file`. This also works
+offline and never downloads anything.
 
 Orbital elements are downloaded from [CelesTrak](https://celestrak.org) (GP
 data, `active` group, JSON/OMM format, so catalogue numbers above 99999 work).

@@ -20,6 +20,7 @@ from .registry import UNKNOWN, Family, classify, flexible_pattern, normalize_nam
 CELESTRAK_GP = "https://celestrak.org/NORAD/elements/gp.php"
 USER_AGENT = "eo-pass-planner/0.1 (+https://github.com/SARcycle/eo-pass-planner)"
 MAX_AGE_HOURS = 6.0
+TIMEOUT_S = 30
 MAX_SINGLE_QUERIES = 10       # max. number of per-satellite requests
 _NOT_A_PAYLOAD = re.compile(r"\b(DEB|R/B|AKM|PKM|COOLANT)\b")
 
@@ -56,7 +57,7 @@ def _download(query: dict, path: Path, *, max_age_hours: float, refresh: bool,
         url = f"{CELESTRAK_GP}?{urllib.parse.urlencode({**query, 'FORMAT': 'json'})}"
         try:
             req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-            with urllib.request.urlopen(req, timeout=120) as r:
+            with urllib.request.urlopen(req, timeout=TIMEOUT_S) as r:
                 raw = r.read()
             try:
                 records = json.loads(raw)
@@ -133,8 +134,15 @@ def refresh_selected(records: list[dict], candidates: list[Candidate], name: str
     return list(by_id.values()), how
 
 
+def gp_url(group: str = "active") -> str:
+    return f"{CELESTRAK_GP}?GROUP={group}&FORMAT=json"
+
+
 def records_from_tle_file(path: str | Path) -> list[dict]:
-    """Read a 2LE/3LE text file (e.g. from Space-Track) into minimal records."""
+    """Read orbital elements from a file: CelesTrak JSON (OMM) or 2LE/3LE text."""
+    text = Path(path).read_text(encoding="utf-8", errors="replace")
+    if text.lstrip().startswith("["):
+        return json.loads(text)
     out = []
     for sat in read_tle_file(path):
         out.append({"_satellite": sat, "OBJECT_NAME": sat.name or str(sat.model.satnum),

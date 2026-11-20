@@ -100,3 +100,25 @@ def test_cli_reports_targeted_refresh(stale_cache, monkeypatch, capsys):
     out, err = capsys.readouterr()
     assert "HTTP 403" in err and "fetched current elements for the selection instead (NAME=ICEYE)" in err
     assert "2026-11-18 06:00" in out
+
+
+def test_unreachable_without_cache_gives_help(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+
+    def urlopen(req, timeout=None):
+        raise urllib.error.URLError(TimeoutError("timed out"))
+
+    monkeypatch.setattr(catalog.urllib.request, "urlopen", urlopen)
+    assert main(["--name", "ICEYE", "--list"]) == 1
+    err = capsys.readouterr().err
+    assert "Traceback" not in err
+    assert "HTTPS_PROXY" in err and "GROUP=active&FORMAT=json" in err and "--tle-file" in err
+
+
+def test_browser_json_via_tle_file(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    monkeypatch.setattr(catalog.urllib.request, "urlopen", None)     # must not download
+    path = tmp_path / "gp.php.json"
+    path.write_text(json.dumps(RECORDS))
+    assert main(["--name", "ICEYE", "--list", "--tle-file", str(path)]) == 0
+    assert "ICEYE-X40" in capsys.readouterr().out

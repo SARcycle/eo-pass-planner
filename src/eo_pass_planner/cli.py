@@ -12,7 +12,8 @@ import sys
 import yaml
 from datetime import datetime, timedelta, timezone
 
-from .catalog import (MAX_AGE_HOURS, cache_age_hours, fetch_gp, records_from_tle_file,
+from .catalog import (MAX_AGE_HOURS, cache_age_hours, cache_dir, fetch_gp, gp_url,
+                      records_from_tle_file,
                       refresh_selected, select)
 from .geometry import find_passes
 from .registry import BAND_GROUPS, load_registry, user_registry_path
@@ -64,6 +65,18 @@ def _fmt_gsd(value: float | None) -> str:
     if value is None:
         return f"{'-':>5}"
     return f"{value:5.2f}" if value < 10 else f"{value:5.1f}"
+
+
+def offline_help(group: str) -> str:
+    set_cmd = "set" if sys.platform == "win32" else "export"
+    return (
+        "CelesTrak could not be reached. On a company network, Python may need the proxy:\n"
+        f"  {set_cmd} HTTPS_PROXY=http://<proxy>:<port>\n"
+        "Or open this address in a browser and save the result:\n"
+        f"  {gp_url(group)}\n"
+        f"either as {cache_dir() / f'gp_{group}.json'}\n"
+        "or anywhere, and pass it with --tle-file <file>."
+    )
 
 
 def show_registry(path: str | None = None) -> int:
@@ -124,7 +137,8 @@ def build_parser() -> argparse.ArgumentParser:
     g.add_argument("--all", action="store_true", help="also show passes outside the sensor envelope")
 
     g = p.add_argument_group("data and output")
-    g.add_argument("--tle-file", help="use a local TLE/3LE file instead of CelesTrak")
+    g.add_argument("--tle-file", help="use a local elements file instead of CelesTrak: TLE/3LE "
+                                      "text or CelesTrak JSON saved from the browser")
     g.add_argument("--group", default="active", help="CelesTrak group (default: active)")
     g.add_argument("--refresh", action="store_true", help="force re-download of orbital elements")
     g.add_argument("--registry", help="extra registry YAML, merged over the bundled and user ones")
@@ -149,7 +163,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.tle_file:
         records, source = records_from_tle_file(args.tle_file), args.tle_file
     else:
-        records, source = fetch_gp(args.group, refresh=args.refresh)
+        try:
+            records, source = fetch_gp(args.group, refresh=args.refresh)
+        except RuntimeError as exc:
+            print(f"error: {exc}\n\n{offline_help(args.group)}", file=sys.stderr)
+            return 1
 
     def _select(recs):
         return select(recs, families, name=args.name, family=args.family, sat_type=args.type,
