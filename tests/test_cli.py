@@ -81,3 +81,19 @@ def test_tilde_expands_to_home(capsys, tmp_path, monkeypatch):
     monkeypatch.setenv("USERPROFILE", str(tmp_path))       # what Windows uses
     assert main([*WHERE, "--csv", "~/passes.csv"]) == 0
     assert (tmp_path / "passes.csv").read_text().startswith("satellite,")
+
+
+def test_csv_times_have_no_offset(tmp_path, capsys):
+    """Excel converts times with an offset to local time, so the CSV has plain UTC."""
+    out = tmp_path / "passes.csv"
+    assert main([*WHERE, "--csv", str(out)]) == 0
+    table = capsys.readouterr().out
+    import csv
+    rows = list(csv.DictReader(out.open(encoding="utf-8")))
+    assert rows
+    for r in rows:
+        assert "+" not in r["time_utc"] and "T" not in r["time_utc"]
+        assert "+" not in r["tle_epoch"]
+    assert rows[0]["time_utc"][:19] in table               # same time as the table
+    passes = run_json(capsys)
+    assert passes[0]["time_utc"].endswith("+00:00")        # JSON keeps the offset

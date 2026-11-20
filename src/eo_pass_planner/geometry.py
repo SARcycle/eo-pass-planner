@@ -65,10 +65,16 @@ class Pass:
     incidence_delta: float | None = None
     off_nadir_delta: float | None = None
 
-    def as_dict(self) -> dict:
+    def as_dict(self, plain_times: bool = False) -> dict:
+        """Fields as a dict. ``plain_times`` drops the UTC offset from the times,
+        because spreadsheets would otherwise convert them to local time."""
         d = asdict(self)
-        d["time_utc"] = self.time_utc.isoformat(timespec="milliseconds")
-        d["tle_epoch"] = self.tle_epoch.isoformat(timespec="seconds")
+        if plain_times:
+            d["time_utc"] = self.time_utc.strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+            d["tle_epoch"] = self.tle_epoch.strftime("%Y-%m-%d %H:%M:%S")
+        else:
+            d["time_utc"] = self.time_utc.isoformat(timespec="milliseconds")
+            d["tle_epoch"] = self.tle_epoch.isoformat(timespec="seconds")
         return d
 
 

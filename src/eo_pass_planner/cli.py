@@ -250,7 +250,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.csv:
         with open(args.csv, "w", newline="", encoding="utf-8") as fh:
-            rows = [p.as_dict() for p in passes]
+            rows = [p.as_dict(plain_times=True) for p in passes]
             w = csv.DictWriter(fh, fieldnames=list(rows[0]) if rows else ["satellite"])
             w.writeheader()
             w.writerows(rows)

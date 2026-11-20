@@ -125,6 +125,9 @@ Selection criteria (`--name`, `--family`, `--type`, `--country`, `--operator`,
 | `dInc` | predicted minus expected incidence (only with `--incidence`) |
 | `dOnad` | predicted minus expected off-nadir angle (only with `--off-nadir`) |
 
+All times are UTC. The CSV writes them without a UTC offset, because Excel
+would otherwise convert them to local time; JSON keeps the offset.
+
 The CSV/JSON output also contains slant range, altitude, sub-satellite point,
 inclination and the element epoch.
 
